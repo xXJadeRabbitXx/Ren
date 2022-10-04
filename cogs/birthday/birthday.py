@@ -22,9 +22,7 @@ class Birthday(commands.Cog):
     """Adds a role to someone on their birthday, and automatically remove them
     from this role after the day is over."""
 
-    # Class constructor
-    def __init__(self, bot: Red):
-        self.bot = bot
+    def initializeConfigAndLogger(self):
         self.config = Config.get_conf(self, identifier=5842647, force_registration=True)
         # Register default (empty) settings.
         self.config.register_guild(**BASE_GUILD)
@@ -41,9 +39,21 @@ class Birthday(commands.Cog):
             )
             self.logger.addHandler(handler)
 
+    def initializeBgTask(self):
         # On cog load, we want the loop to run once.
         self.lastChecked = datetime.now() - timedelta(days=1)
         self.bgTask = self.bot.loop.create_task(self.birthdayLoop())
+
+    # Class constructor
+    def __init__(self, bot: Red):
+        self.bot = bot
+        self.bgTask: asyncio.Task = None
+        self.config: Config = None
+        self.lastChecked: datetime = None
+        self.logger: logging.Logger = None
+
+        self.initializeConfigAndLogger()
+        self.initializeBgTask()
 
     # Cancel the background task on cog unload.
     def __unload(self):  # pylint: disable=invalid-name
@@ -582,6 +592,23 @@ class Birthday(commands.Cog):
             await allowSelfBirthdayConfig.set(True)
             await ctx.send(msgAllow)
 
+    def getBirthdayMessage(self, member: discord.Member) -> str:
+        """Get the birthday message.
+
+        Parameters
+        ----------
+        member: discord.Member
+            The member that we want the birthday message for.
+
+        Returns
+        -------
+        str
+            The birthday message, already formatted.
+        """
+        if self.bot.user.id == member.id:
+            return BOT_BIRTHDAY_MSG
+        return choice(CANNED_MESSAGES).format(member.mention)
+
     async def checkBirthday(self):
         """Check birthday list once."""
         await self._dailySweep()
@@ -589,6 +616,9 @@ class Birthday(commands.Cog):
 
     async def birthdayLoop(self):
         """The main event loop that will call the add and sweep methods."""
+        self.logger.info("Waiting for bot to be ready")
+        await self.bot.wait_until_red_ready()
+        self.logger.info("Bot is ready")
         while self == self.bot.get_cog("Birthday"):
             if self.lastChecked.day != datetime.now().day:
                 self.lastChecked = datetime.now()
@@ -715,8 +745,8 @@ class Birthday(commands.Cog):
                             if not channel:
                                 continue
                             try:
-                                msg = choice(CANNED_MESSAGES)
-                                await channel.send(msg.format(member.mention))
+                                msg = self.getBirthdayMessage(member)
+                                await channel.send(msg)
                             except discord.Forbidden:
                                 self.logger.error(
                                     "Could not send message!",
