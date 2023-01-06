@@ -1,3 +1,5 @@
+.. include:: _includes/supported-arch-x64+aarch64.rst
+
 .. include:: _includes/linux-preamble.rst
 
 -------------------------------
@@ -11,7 +13,7 @@ Install them with dnf:
 
     sudo dnf -y update
     sudo dnf -y group install development
-    sudo dnf -y install python39 python39-pip python39-devel java-11-openjdk-headless nano git
+    sudo dnf -y install python39 python39-devel java-11-openjdk-headless nano git
 
 Set ``java`` executable to point to Java 11:
 
@@ -21,6 +23,6 @@ Set ``java`` executable to point to Java 11:
 
 .. Include common instructions:
 
-.. include:: _includes/create-env-with-venv.rst
+.. include:: _includes/create-env-with-venv3.9.rst
 
 .. include:: _includes/install-and-setup-red-unix.rst
