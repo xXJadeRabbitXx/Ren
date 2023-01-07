@@ -20,7 +20,7 @@ jobs:
           pip install pytest pytest-asyncio pytest-mock
       - name: Install Red-DiscordBot
         run: |
-          python setup.py install
+          pip install .
       - name: Run unit tests
         run: |
           pytest cogs/*/test* 
