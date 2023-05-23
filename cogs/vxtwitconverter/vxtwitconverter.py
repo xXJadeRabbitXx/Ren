@@ -36,8 +36,7 @@ class VxTwitConverter(commands.Cog):
                 await message.reply(
                     "OwO what's this?\n"
                     "*notices your terrible twitter embeds*\n"
-                    "Here's a better alternative:\n" +
-                    ",\n".join(new_message)
+                    "Here's a better alternative:\n" + ",\n".join(new_message)
                 )
 
                 await message.edit(suppress=True)
