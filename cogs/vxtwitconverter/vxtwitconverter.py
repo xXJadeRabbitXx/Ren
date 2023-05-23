@@ -25,16 +25,20 @@ class VxTwitConverter(commands.Cog):
 
         if extractor.has_urls(message.content):
             results = URLExtract().find_urls(message.content)
-            new_message = [result.replace("https://twitter.com", "https://vxtwitter.com")
-                           for result in results
-                           if "https://twitter.com" in result]
+            new_message = [
+                result.replace("https://twitter.com", "https://vxtwitter.com")
+                for result in results
+                if "https://twitter.com" in result
+            ]
 
             if new_message:
                 # removed embed from the parent message, and replies with vxtwitter link
-                await message.reply("OwO what's this?\n"
-                                    "*notices your terrible twitter embeds*\n"
-                                    "Here's a better alternative:\n" +
-                                    ",\n".join(new_message))
+                await message.reply(
+                    "OwO what's this?\n"
+                    "*notices your terrible twitter embeds*\n"
+                    "Here's a better alternative:\n" +
+                    ",\n".join(new_message)
+                )
 
                 await message.edit(suppress=True)
         else:
