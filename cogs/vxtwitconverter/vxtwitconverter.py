@@ -1,7 +1,10 @@
+import logging
+
+from discord import Message, channel
+from urlextract import URLExtract
+
 from redbot.core import commands
 from redbot.core.bot import Red
-from discord import Message
-from urlextract import URLExtract
 
 
 class VxTwitConverter(commands.Cog):
@@ -13,18 +16,23 @@ class VxTwitConverter(commands.Cog):
 
     @commands.Cog.listener("on_message")
     async def twit_replacer(self, message: Message):
-        # skips if the message is sent by the bot
-        if message.author == self.bot.user:
+        # skips if the message is sent by any bot
+        if message.author.bot:
+            return
+
+        # skips if message is in dm
+        if isinstance(message.channel, channel.DMChannel):
             return
 
         # skips if the message has no embeds
         if not any(embed.video for embed in message.embeds):
             return
 
+        # the actual code part
         extractor = URLExtract()
 
         if extractor.has_urls(message.content):
-            results = URLExtract().find_urls(message.content)
+            results = extractor.find_urls(message.content)
             new_message = [
                 result.replace("https://twitter.com", "https://vxtwitter.com")
                 for result in results
@@ -41,4 +49,5 @@ class VxTwitConverter(commands.Cog):
 
                 await message.edit(suppress=True)
         else:
-            print("Message contains embed, but cannot find link")
+            logging.getLogger("red.vxtwitconverter") \
+                .warning("Message contains embed, but cannot find link")
