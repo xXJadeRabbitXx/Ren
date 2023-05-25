@@ -1,9 +1,10 @@
 import logging
+import os
 
 from discord import Message, channel
 from urlextract import URLExtract
 
-from redbot.core import commands
+from redbot.core import commands, data_manager
 from redbot.core.bot import Red
 
 
@@ -13,6 +14,17 @@ class VxTwitConverter(commands.Cog):
     def __init__(self, bot: Red):
         super().__init__()
         self.bot = bot
+
+        # Initialize logger, and save to cog folder.
+        saveFolder = data_manager.cog_data_path(cog_instance=self)
+        self.logger = logging.getLogger("red.luicogs.vxtwitconverter")
+        if not self.logger.handlers:
+            logPath = os.path.join(saveFolder, "info.log")
+            handler = logging.FileHandler(filename=logPath, encoding="utf-8", mode="a")
+            handler.setFormatter(
+                logging.Formatter("%(asctime)s %(message)s", datefmt="[%d/%m/%Y %H:%M:%S]")
+            )
+            self.logger.addHandler(handler)
 
     @commands.Cog.listener("on_message")
     async def twit_replacer(self, message: Message):
@@ -49,5 +61,4 @@ class VxTwitConverter(commands.Cog):
 
                 await message.edit(suppress=True)
         else:
-            logging.getLogger("red.vxtwitconverter") \
-                .warning("Message contains embed, but cannot find link")
+            self.logger.error("Message contains embed, but cannot find link")
