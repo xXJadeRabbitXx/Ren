@@ -2,10 +2,10 @@
     "name" : "VxTwitConverter",
     "author" : ["JadeRabbit#9310"],
     "short" : "twitter embed fix when?",
-    "description" : "Converts Twitter video embeds into vxTwitter links instead",
-    "install_msg" : "Twit converter installed",
+    "description" : "Converts Twitter link to VxTwitter for better video embeds",
+    "install_msg" : "VxTwitConverter installed",
     "requirements" : ["urlextract"],
     "tags" : ["server"],
-    "permissions" : [],
+    "permissions" : ["manage_messages"],
     "end_user_data_statement": "no data is stored"
 }

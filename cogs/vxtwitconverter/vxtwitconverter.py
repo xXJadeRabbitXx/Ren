@@ -9,18 +9,18 @@ from redbot.core.bot import Red
 
 
 class VxTwitConverter(commands.Cog):
-    """Converts twitter link embeds to vxtwitter"""
+    """Converts Twitter link to VxTwitter for better video embeds"""
 
     def __init__(self, bot: Red):
         super().__init__()
         self.bot = bot
 
         # Initialize logger, and save to cog folder.
-        saveFolder = data_manager.cog_data_path(cog_instance=self)
+        save_folder = data_manager.cog_data_path(cog_instance=self)
         self.logger = logging.getLogger("red.luicogs.vxtwitconverter")
         if not self.logger.handlers:
-            logPath = os.path.join(saveFolder, "info.log")
-            handler = logging.FileHandler(filename=logPath, encoding="utf-8", mode="a")
+            log_path = os.path.join(save_folder, "info.log")
+            handler = logging.FileHandler(filename=log_path, encoding="utf-8", mode="a")
             handler.setFormatter(
                 logging.Formatter("%(asctime)s %(message)s", datefmt="[%d/%m/%Y %H:%M:%S]")
             )
@@ -41,24 +41,24 @@ class VxTwitConverter(commands.Cog):
             return
 
         # the actual code part
-        extractor = URLExtract()
+        vx_twit_links = [
+            result.replace("https://twitter.com", "https://vxtwitter.com")
+            for result in URLExtract().find_urls(message.content)
+            if "https://twitter.com" in result
+        ]
 
-        if extractor.has_urls(message.content):
-            results = extractor.find_urls(message.content)
-            new_message = [
-                result.replace("https://twitter.com", "https://vxtwitter.com")
-                for result in results
-                if "https://twitter.com" in result
-            ]
+        # if we can't find any twitter links
+        if not vx_twit_links:
+            self.logger.debug("Embed found, but cannot find any valid links in the message")
+            return
 
-            if new_message:
-                # removed embed from the parent message, and replies with vxtwitter link
-                await message.reply(
-                    "OwO what's this?\n"
-                    "*notices your terrible twitter embeds*\n"
-                    "Here's a better alternative:\n" + ",\n".join(new_message)
-                )
+        # constructs the message and replies with a mention
+        ok = await message.reply(
+            "OwO what's this?\n"
+            "*notices your terrible twitter embeds*\n"
+            "Here's a better alternative:\n" + "\n".join(vx_twit_links),
+        )
 
-                await message.edit(suppress=True)
-        else:
-            self.logger.error("Message contains embed, but cannot find link")
+        # Remove embeds from user message if reply is successful
+        if ok:
+            await message.edit(suppress=True)

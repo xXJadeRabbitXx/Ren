@@ -1,5 +1,5 @@
-from .vxtwitconverter import VxTwitConverter
 from redbot.core.bot import Red
+from .vxtwitconverter import VxTwitConverter
 
 
 async def setup(bot: Red):
