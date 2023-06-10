@@ -1,4 +1,4 @@
-from cogs.vxtwitconverter.eventHandlers import EventHandlers
+from .eventHandlers import EventHandlers
 from redbot.core import commands
 
 

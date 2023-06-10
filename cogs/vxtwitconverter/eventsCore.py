@@ -1,10 +1,10 @@
 from discord import Message, channel
 from urlextract import URLExtract
 
-from cogs.vxtwitconverter.core import Core
+from .core import Core
 
 
-class EventCore(Core):
+class EventsCore(Core):
     async def _twit_replacer(self, message: Message):
         # skips if the message is sent by any bot
         if message.author.bot:
