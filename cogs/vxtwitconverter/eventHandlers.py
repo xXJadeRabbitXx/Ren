@@ -1,7 +1,8 @@
 from discord import Message
 
-from .eventsCore import EventsCore
 from redbot.core import commands
+
+from .eventsCore import EventsCore
 
 
 class EventHandlers(EventsCore):

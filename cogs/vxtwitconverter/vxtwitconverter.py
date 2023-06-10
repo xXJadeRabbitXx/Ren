@@ -1,5 +1,6 @@
-from .eventHandlers import EventHandlers
 from redbot.core import commands
+
+from .eventHandlers import EventHandlers
 
 
 class VxTwitConverter(commands.Cog, EventHandlers):
