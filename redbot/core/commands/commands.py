@@ -24,7 +24,6 @@ from typing import (
     Union,
     MutableMapping,
     TYPE_CHECKING,
-    cast,
 )
 
 import discord
@@ -44,7 +43,6 @@ from discord.ext.commands import (
     Greedy,
 )
 
-from .errors import ConversionFailure
 from .requires import PermState, PrivilegeLevel, Requires, PermStateAllowedStates
 from .. import app_commands
 from ..i18n import Translator
@@ -69,7 +67,7 @@ else:
     _P = TypeVar("_P")
 
 
-__all__ = [
+__all__ = (
     "Cog",
     "CogMixin",
     "CogCommandMixin",
@@ -78,13 +76,15 @@ __all__ = [
     "Group",
     "GroupCog",
     "GroupMixin",
+    "HybridCommand",
+    "HybridGroup",
     "command",
     "group",
     "hybrid_command",
     "hybrid_group",
     "RESERVED_COMMAND_NAMES",
     "RedUnhandledAPI",
-]
+)
 
 #: The following names are reserved for various reasons
 RESERVED_COMMAND_NAMES = (
