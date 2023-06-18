@@ -115,7 +115,9 @@ class EventsCore(Core):
 
         video_embed_before = [embed for embed in message_before.embeds if embed.video]
         video_embed_after = [embed for embed in message_after.embeds if embed.video]
-        new_video_embeds = list(set(video_embed_after) - set(video_embed_before))
+        new_video_embeds = [
+            embed for embed in video_embed_after if embed not in video_embed_before
+        ]
 
         # skips if the message has no new embeds
         if not new_video_embeds:
