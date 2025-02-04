@@ -330,7 +330,7 @@ class Mutes(VoiceMutes, commands.Cog, metaclass=CompositeMetaClass):
                     del muted_users[str(data["member"])]
             del self._server_mutes[guild.id][data["member"]]
             return
-        result = await self.unmute_user(guild, author, member, _("Automatic unmute"))
+        result = await self.unmute_user(guild, None, member, _("Automatic unmute"))
         async with self.config.guild(guild).muted_users() as muted_users:
             if str(member.id) in muted_users:
                 del muted_users[str(member.id)]
@@ -508,7 +508,7 @@ class Mutes(VoiceMutes, commands.Cog, metaclass=CompositeMetaClass):
                 del self._channel_mutes[channel.id][data["member"]]
             return None
         result = await self.channel_unmute_user(
-            channel.guild, channel, author, member, _("Automatic unmute")
+            channel.guild, channel, None, member, _("Automatic unmute")
         )
         async with self.config.channel(channel).muted_users() as muted_users:
             if str(member.id) in muted_users:
@@ -1751,7 +1751,7 @@ class Mutes(VoiceMutes, commands.Cog, metaclass=CompositeMetaClass):
     async def unmute_user(
         self,
         guild: discord.Guild,
-        author: discord.Member,
+        author: Optional[discord.Member],
         user: discord.Member,
         reason: Optional[str] = None,
     ) -> MuteResponse:
@@ -1761,7 +1761,7 @@ class Mutes(VoiceMutes, commands.Cog, metaclass=CompositeMetaClass):
         ret: MuteResponse = MuteResponse(success=False, reason=None, user=user)
 
         mute_role_id = await self.config.guild(guild).mute_role()
-        if not await self.is_allowed_by_hierarchy(guild, author, user):
+        if author is not None and not await self.is_allowed_by_hierarchy(guild, author, user):
             ret.reason = _(MUTE_UNMUTE_ISSUES["hierarchy_problem"])
             return ret
 
@@ -1927,7 +1927,7 @@ class Mutes(VoiceMutes, commands.Cog, metaclass=CompositeMetaClass):
         self,
         guild: discord.Guild,
         channel: discord.abc.GuildChannel,
-        author: discord.Member,
+        author: Optional[discord.Member],
         user: discord.Member,
         reason: Optional[str] = None,
         *,
@@ -1964,7 +1964,7 @@ class Mutes(VoiceMutes, commands.Cog, metaclass=CompositeMetaClass):
             if channel.permissions_for(guild.me).move_members:
                 move_channel = True
 
-        if not await self.is_allowed_by_hierarchy(guild, author, user):
+        if author is not None and not await self.is_allowed_by_hierarchy(guild, author, user):
             ret.reason = _(MUTE_UNMUTE_ISSUES["hierarchy_problem"])
             return ret
 

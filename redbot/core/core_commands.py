@@ -38,7 +38,6 @@ from typing import (
 
 import aiohttp
 import discord
-from babel import Locale as BabelLocale, UnknownLocaleError
 from redbot.core.data_manager import storage_type
 
 from . import (
@@ -46,6 +45,7 @@ from . import (
     version_info as red_version_info,
     commands,
     errors,
+    _i18n,
     i18n,
     bank,
     modlog,
@@ -2081,9 +2081,9 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
             )
         )
 
-    @slash.command(name="enablecog")
+    @slash.command(name="enablecog", require_var_positional=True)
     @commands.max_concurrency(1, wait=True)
-    async def slash_enablecog(self, ctx: commands.Context, cog_name: str):
+    async def slash_enablecog(self, ctx: commands.Context, *cog_names: str):
         """Marks all application commands in a cog as being enabled, allowing them to be added to the bot.
 
         See a list of cogs with application commands with `[p]slash list`.
@@ -2091,32 +2091,42 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         This command does NOT sync the enabled commands with Discord, that must be done manually with `[p]slash sync` for commands to appear in users' clients.
 
         **Arguments:**
-            - `<cog_name>` - The cog to enable commands from. This argument is case sensitive.
+            - `<cog_names>` - The cogs to enable commands from. This argument is case sensitive.
         """
         enabled_commands = await self.bot.list_enabled_app_commands()
         to_add_slash = []
         to_add_message = []
         to_add_user = []
 
+        successful_cogs = set()
         # Fetch a list of command names to enable
         for name, com in self.bot.tree._disabled_global_commands.items():
-            if self._is_submodule(cog_name, com.module):
-                to_add_slash.append(name)
+            for cog_name in cog_names:
+                if self._is_submodule(cog_name, com.module):
+                    to_add_slash.append(name)
+                    successful_cogs.add(cog_name)
         for key, com in self.bot.tree._disabled_context_menus.items():
-            if self._is_submodule(cog_name, com.module):
-                name, guild_id, com_type = key
-                com_type = discord.AppCommandType(com_type)
-                if com_type is discord.AppCommandType.message:
-                    to_add_message.append(name)
-                elif com_type is discord.AppCommandType.user:
-                    to_add_user.append(name)
+            for cog_name in cog_names:
+                if self._is_submodule(cog_name, com.module):
+                    name, guild_id, com_type = key
+                    com_type = discord.AppCommandType(com_type)
+                    if com_type is discord.AppCommandType.message:
+                        to_add_message.append(name)
+                        successful_cogs.add(cog_name)
+                    elif com_type is discord.AppCommandType.user:
+                        to_add_user.append(name)
+                        successful_cogs.add(cog_name)
+        failed_cogs = set(cog_names) - successful_cogs
 
         # Check that we are going to enable at least one command, for user feedback
         if not (to_add_slash or to_add_message or to_add_user):
             await ctx.send(
                 _(
-                    "Couldn't find any disabled commands from the cog `{cog_name}`. Use `{prefix}slash list` to see all cogs with application commands."
-                ).format(cog_name=cog_name, prefix=ctx.prefix)
+                    "Couldn't find any disabled commands from {cog_names}. Use `{prefix}slash list` to see all cogs with application commands"
+                ).format(
+                    cog_names=humanize_list([inline(name) for name in failed_cogs]),
+                    prefix=ctx.clean_prefix,
+                )
             )
             return
 
@@ -2130,7 +2140,7 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         if total_slash > SLASH_CAP:
             await ctx.send(
                 _(
-                    "Enabling all application commands from that cog would enable a total of {count} "
+                    "Enabling all application commands from these cogs would enable a total of {count} "
                     "commands, exceeding the {cap} command limit for slash commands. "
                     "Disable some commands first."
                 ).format(count=total_slash, cap=SLASH_CAP)
@@ -2139,7 +2149,7 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         if total_message > CONTEXT_CAP:
             await ctx.send(
                 _(
-                    "Enabling all application commands from that cog would enable a total of {count} "
+                    "Enabling all application commands from these cogs would enable a total of {count} "
                     "commands, exceeding the {cap} command limit for message commands. "
                     "Disable some commands first."
                 ).format(count=total_message, cap=CONTEXT_CAP)
@@ -2148,7 +2158,7 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         if total_user > CONTEXT_CAP:
             await ctx.send(
                 _(
-                    "Enabling all application commands from that cog would enable a total of {count} "
+                    "Enabling all application commands from these cogs would enable a total of {count} "
                     "commands, exceeding the {cap} command limit for user commands. "
                     "Disable some commands first."
                 ).format(count=total_user, cap=CONTEXT_CAP)
@@ -2172,14 +2182,24 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         names.extend(to_add_message)
         names.extend(to_add_user)
         formatted_names = humanize_list([inline(name) for name in names])
-        await ctx.send(
-            _("Enabled {count} commands from `{cog_name}`:\n{names}").format(
-                count=count, cog_name=cog_name, names=formatted_names
-            )
-        )
+        formatted_successful_cogs = humanize_list([inline(name) for name in successful_cogs])
 
-    @slash.command(name="disablecog")
-    async def slash_disablecog(self, ctx: commands.Context, cog_name):
+        output = _("Enabled {count} commands from {cog_names}:\n{names}").format(
+            count=count, cog_names=formatted_successful_cogs, names=formatted_names
+        )
+        if failed_cogs:
+            output += "\n\n"
+            output += _(
+                "Couldn't find any disabled commands from {cog_names}. Use `{prefix}slash list` to see all cogs with application commands."
+            ).format(
+                cog_names=humanize_list([inline(name) for name in failed_cogs]),
+                prefix=ctx.clean_prefix,
+            )
+        for page in pagify(output):
+            await ctx.send(page)
+
+    @slash.command(name="disablecog", require_var_positional=True)
+    async def slash_disablecog(self, ctx: commands.Context, *cog_names: str):
         """Marks all application commands in a cog as being disabled, preventing them from being added to the bot.
 
         See a list of cogs with application commands with `[p]slash list`.
@@ -2187,32 +2207,55 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         This command does NOT sync the enabled commands with Discord, that must be done manually with `[p]slash sync` for commands to appear in users' clients.
 
         **Arguments:**
-            - `<cog_name>` - The cog to disable commands from. This argument is case sensitive.
+            - `<cog_names>` - The cogs to disable commands from. This argument is case sensitive.
         """
         removed = []
+        removed_cogs = set()
         for name, com in self.bot.tree._global_commands.items():
-            if self._is_submodule(cog_name, com.module):
-                await self.bot.disable_app_command(name, discord.AppCommandType.chat_input)
-                removed.append(name)
+            for cog_name in cog_names:
+                if self._is_submodule(cog_name, com.module):
+                    await self.bot.disable_app_command(name, discord.AppCommandType.chat_input)
+                    removed.append(name)
+                    removed_cogs.add(cog_name)
         for key, com in self.bot.tree._context_menus.items():
-            if self._is_submodule(cog_name, com.module):
-                name, guild_id, com_type = key
-                await self.bot.disable_app_command(name, discord.AppCommandType(com_type))
-                removed.append(name)
+            for cog_name in cog_names:
+                if self._is_submodule(cog_name, com.module):
+                    name, guild_id, com_type = key
+                    await self.bot.disable_app_command(name, discord.AppCommandType(com_type))
+                    removed.append(name)
+                    removed_cogs.add(cog_name)
+        failed_cogs = set(cog_names) - removed_cogs
+
         if not removed:
             await ctx.send(
                 _(
-                    "Couldn't find any enabled commands from the `{cog_name}` cog. Use `{prefix}slash list` to see all cogs with application commands."
-                ).format(cog_name=cog_name, prefix=ctx.prefix)
+                    "Couldn't find any enabled commands from {cog_names}. Use `{prefix}slash list` to see all cogs with application commands."
+                ).format(
+                    cog_names=humanize_list([inline(name) for name in failed_cogs]),
+                    prefix=ctx.clean_prefix,
+                )
             )
             return
+
         await self.bot.tree.red_check_enabled()
         formatted_names = humanize_list([inline(name) for name in removed])
-        await ctx.send(
-            _("Disabled {count} commands from `{cog_name}`:\n{names}").format(
-                count=len(removed), cog_name=cog_name, names=formatted_names
-            )
+        formatted_removed_cogs = humanize_list([inline(name) for name in removed_cogs])
+
+        output = _("Disabled {count} commands from {cog_names}:\n{names}").format(
+            count=len(removed),
+            cog_names=formatted_removed_cogs,
+            names=formatted_names,
         )
+        if failed_cogs:
+            output += "\n\n"
+            output += _(
+                "Couldn't find any enabled commands from {cog_names}. Use `{prefix}slash list` to see all cogs with application commands."
+            ).format(
+                cog_names=humanize_list([inline(name) for name in failed_cogs]),
+                prefix=ctx.clean_prefix,
+            )
+        for page in pagify(output):
+            await ctx.send(page)
 
     @slash.command(name="list")
     async def slash_list(self, ctx: commands.Context):
@@ -2375,6 +2418,11 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         """Custom cooldown error message."""
         if not isinstance(error, commands.CommandOnCooldown):
             return await ctx.bot.on_command_error(ctx, error, unhandled_by_cog=True)
+        if ctx.bot._bypass_cooldowns and ctx.author.id in ctx.bot.owner_ids:
+            ctx.command.reset_cooldown(ctx)
+            new_ctx = await ctx.bot.get_context(ctx.message)
+            await ctx.bot.invoke(new_ctx)
+            return
         await ctx.send(
             _(
                 "You seem to be attempting to sync after recently syncing. Discord does not like it "
@@ -2709,7 +2757,7 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
     @modlogset.command(hidden=True, name="fixcasetypes")
     async def modlogset_fixcasetypes(self, ctx: commands.Context):
         """Command to fix misbehaving casetypes."""
-        await modlog.handle_auditype_key()
+        await modlog._handle_audit_type_key()
         await ctx.tick()
 
     @modlogset.command(aliases=["channel"], name="modlog")
@@ -2848,21 +2896,12 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
             ctx.bot.description = description
             await ctx.tick()
 
-    @_set_bot.group(name="avatar", invoke_without_command=True)
-    @commands.is_owner()
-    async def _set_bot_avatar(self, ctx: commands.Context, url: str = None):
-        """Sets [botname]'s avatar
-
-        Supports either an attachment or an image URL.
-
-        **Examples:**
-        - `[p]set bot avatar` - With an image attachment, this will set the avatar.
-        - `[p]set bot avatar` - Without an attachment, this will show the command help.
-        - `[p]set bot avatar https://links.flaree.xyz/k95` - Sets the avatar to the provided url.
-
-        **Arguments:**
-        - `[url]` - An image url to be used as an avatar. Leave blank when uploading an attachment.
-        """
+    async def _set_bot_image(
+        self,
+        image_type: Literal["avatar", "banner"],
+        ctx: commands.Context,
+        url: Optional[str] = None,
+    ):
         if len(ctx.message.attachments) > 0:  # Attachments take priority
             data = await ctx.message.attachments[0].read()
         elif url is not None:
@@ -2883,19 +2922,48 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
 
         try:
             async with ctx.typing():
-                await ctx.bot.user.edit(avatar=data)
+                if image_type == "avatar":
+                    await ctx.bot.user.edit(avatar=data)
+                else:
+                    await ctx.bot.user.edit(banner=data)
         except discord.HTTPException:
-            await ctx.send(
-                _(
-                    "Failed. Remember that you can edit my avatar "
-                    "up to two times a hour. The URL or attachment "
-                    "must be a valid image in either JPG, PNG, or GIF format."
+            if image_type == "avatar":
+                await ctx.send(
+                    _(
+                        "Failed. Remember that you can edit my avatar "
+                        "up to two times a hour. The URL or attachment "
+                        "must be a valid image in either JPG, PNG, GIF, or WEBP format."
+                    )
                 )
-            )
+            else:
+                await ctx.send(
+                    _(
+                        "Failed. Remember that you can edit my banner "
+                        "up to two times a hour. The URL or attachment "
+                        "must be a valid image in either JPG, PNG, GIF, or WEBP format."
+                    )
+                )
         except ValueError:
-            await ctx.send(_("JPG / PNG / GIF format only."))
+            await ctx.send(_("JPG / PNG / GIF / WEBP format only."))
         else:
             await ctx.send(_("Done."))
+
+    @_set_bot.group(name="avatar", invoke_without_command=True)
+    @commands.is_owner()
+    async def _set_bot_avatar(self, ctx: commands.Context, url: str = None):
+        """Sets [botname]'s avatar
+
+        Supports either an attachment or an image URL.
+
+        **Examples:**
+        - `[p]set bot avatar` - With an image attachment, this will set the avatar.
+        - `[p]set bot avatar` - Without an attachment, this will show the command help.
+        - `[p]set bot avatar https://avatars.githubusercontent.com/u/23690422` - Sets the avatar to the provided url.
+
+        **Arguments:**
+        - `[url]` - An image url to be used as an avatar. Leave blank when uploading an attachment.
+        """
+        await self._set_bot_image("avatar", ctx, url)
 
     @_set_bot_avatar.command(name="remove", aliases=["clear"])
     @commands.is_owner()
@@ -2909,6 +2977,36 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         async with ctx.typing():
             await ctx.bot.user.edit(avatar=None)
         await ctx.send(_("Avatar removed."))
+
+    @_set_bot.group(name="banner", invoke_without_command=True)
+    @commands.is_owner()
+    async def _set_bot_banner(self, ctx: commands.Context, url: str = None):
+        """Sets [botname]'s banner
+
+        Supports either an attachment or an image URL.
+
+        **Examples:**
+        - `[p]set bot banner` - With an image attachment, this will set the banner.
+        - `[p]set bot banner` - Without an attachment, this will show the command help.
+        - `[p]set bot banner https://opengraph.githubassets.com` - Sets the banner to the provided url.
+
+        **Arguments:**
+        - `[url]` - An image url to be used as an banner. Leave blank when uploading an attachment.
+        """
+        await self._set_bot_image("banner", ctx, url)
+
+    @_set_bot_banner.command(name="remove", aliases=["clear"])
+    @commands.is_owner()
+    async def _set_bot_banner_remove(self, ctx: commands.Context):
+        """
+        Removes [botname]'s banner.
+
+        **Example:**
+        - `[p]set bot banner remove`
+        """
+        async with ctx.typing():
+            await ctx.bot.user.edit(banner=None)
+        await ctx.send(_("Banner removed."))
 
     @_set_bot.command(name="username", aliases=["name"])
     @commands.is_owner()
@@ -3424,17 +3522,10 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         - `<language_code>` - The default locale to use for the bot. This can be any language code with country code included.
         """
         try:
-            locale = BabelLocale.parse(language_code, sep="-")
-        except (ValueError, UnknownLocaleError):
+            standardized_locale_name = _i18n.set_global_locale(language_code)
+        except ValueError:
             await ctx.send(_("Invalid language code. Use format: `en-US`"))
             return
-        if locale.territory is None:
-            await ctx.send(
-                _("Invalid format - language code has to include country code, e.g. `en-US`")
-            )
-            return
-        standardized_locale_name = f"{locale.language}-{locale.territory}"
-        i18n.set_locale(standardized_locale_name)
         await self.bot._i18n_cache.set_locale(None, standardized_locale_name)
         await i18n.set_contextual_locales_from_guild(self.bot, ctx.guild)
         await ctx.send(_("Global locale has been set."))
@@ -3467,17 +3558,10 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
             await ctx.send(_("Locale has been set to the default."))
             return
         try:
-            locale = BabelLocale.parse(language_code, sep="-")
-        except (ValueError, UnknownLocaleError):
+            standardized_locale_name = i18n.set_contextual_locale(language_code)
+        except ValueError:
             await ctx.send(_("Invalid language code. Use format: `en-US`"))
             return
-        if locale.territory is None:
-            await ctx.send(
-                _("Invalid format - language code has to include country code, e.g. `en-US`")
-            )
-            return
-        standardized_locale_name = f"{locale.language}-{locale.territory}"
-        i18n.set_contextual_locale(standardized_locale_name)
         await self.bot._i18n_cache.set_locale(ctx.guild, standardized_locale_name)
         await ctx.send(_("Locale has been set."))
 
@@ -3523,23 +3607,16 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
         - `[language_code]` - The default region format to use for the bot.
         """
         if language_code.lower() == "reset":
-            i18n.set_regional_format(None)
+            _i18n.set_global_regional_format(None)
             await self.bot._i18n_cache.set_regional_format(None, None)
             await ctx.send(_("Global regional formatting will now be based on bot's locale."))
             return
 
         try:
-            locale = BabelLocale.parse(language_code, sep="-")
-        except (ValueError, UnknownLocaleError):
+            standardized_locale_name = _i18n.set_global_regional_format(language_code)
+        except ValueError:
             await ctx.send(_("Invalid language code. Use format: `en-US`"))
             return
-        if locale.territory is None:
-            await ctx.send(
-                _("Invalid format - language code has to include country code, e.g. `en-US`")
-            )
-            return
-        standardized_locale_name = f"{locale.language}-{locale.territory}"
-        i18n.set_regional_format(standardized_locale_name)
         await self.bot._i18n_cache.set_regional_format(None, standardized_locale_name)
         await ctx.send(
             _("Global regional formatting will now be based on `{language_code}` locale.").format(
@@ -3574,17 +3651,10 @@ class Core(commands.commands._RuleDropper, commands.Cog, CoreLogic):
             return
 
         try:
-            locale = BabelLocale.parse(language_code, sep="-")
-        except (ValueError, UnknownLocaleError):
+            standardized_locale_name = i18n.set_contextual_regional_format(language_code)
+        except ValueError:
             await ctx.send(_("Invalid language code. Use format: `en-US`"))
             return
-        if locale.territory is None:
-            await ctx.send(
-                _("Invalid format - language code has to include country code, e.g. `en-US`")
-            )
-            return
-        standardized_locale_name = f"{locale.language}-{locale.territory}"
-        i18n.set_contextual_regional_format(standardized_locale_name)
         await self.bot._i18n_cache.set_regional_format(ctx.guild, standardized_locale_name)
         await ctx.send(
             _("Regional formatting will now be based on `{language_code}` locale.").format(

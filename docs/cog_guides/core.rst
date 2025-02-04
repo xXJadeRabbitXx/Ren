@@ -2867,7 +2867,7 @@ Supports either an attachment or an image URL.
 **Examples:**
     - ``[p]set bot avatar`` - With an image attachment, this will set the avatar.
     - ``[p]set bot avatar`` - Without an attachment, this will show the command help.
-    - ``[p]set bot avatar https://links.flaree.xyz/k95`` - Sets the avatar to the provided url.
+    - ``[p]set bot avatar https://avatars.githubusercontent.com/u/23690422`` - Sets the avatar to the provided url.
 
 **Arguments:**
     - ``[url]`` - An image url to be used as an avatar. Leave blank when uploading an attachment.
@@ -2894,6 +2894,57 @@ Removes Red's avatar.
 
 **Example:**
     - ``[p]set bot avatar remove``
+
+.. _core-command-set-bot-banner:
+
+""""""""""""""
+set bot banner
+""""""""""""""
+
+.. note:: |owner-lock|
+
+**Syntax**
+
+.. code-block:: none
+
+    [p]set bot banner [url]
+
+**Description**
+
+Sets Red's banner
+
+Supports either an attachment or an image URL.
+
+**Examples:**
+    - ``[p]set bot banner`` - With an image attachment, this will set the banner.
+    - ``[p]set bot banner`` - Without an attachment, this will show the command help.
+    - ``[p]set bot banner https://opengraph.githubassets.com`` - Sets the banner to the provided url.
+
+**Arguments:**
+    - ``[url]`` - An image url to be used as an banner. Leave blank when uploading an attachment.
+
+.. _core-command-set-bot-banner-remove:
+
+"""""""""""""""""""""
+set bot banner remove
+"""""""""""""""""""""
+
+.. note:: |owner-lock|
+
+**Syntax**
+
+.. code-block:: none
+
+    [p]set bot banner remove
+
+.. tip:: Alias: ``set bot banner clear``
+
+**Description**
+
+Removes Red's banner.
+
+**Example:**
+    - ``[p]set bot banner remove``
 
 .. _core-command-set-bot-custominfo:
 
@@ -4134,7 +4185,7 @@ slash disablecog
 
 .. code-block:: none
 
-    [p]slash disablecog <cog_name>
+    [p]slash disablecog <cog_names...>
     
 **Description**
 
@@ -4144,7 +4195,7 @@ This command does NOT sync the enabled commands with Discord, that must be done 
 with ``[p]slash sync`` for commands to appear in users' clients.
 
 **Arguments:**
-    - ``<cog_name>`` - The cog to disable commands from. This argument is case sensitive.
+    - ``<cog_names>`` - The cogs to disable commands from. This argument is case sensitive.
 
 .. _core-command-slash-enable:
 
@@ -4179,7 +4230,7 @@ slash enablecog
 
 .. code-block:: none
 
-    [p]slash enablecog <cog_name>
+    [p]slash enablecog <cog_names...>
     
 **Description**
 
@@ -4189,7 +4240,7 @@ This command does NOT sync the enabled commands with Discord, that must be done 
 with ``[p]slash sync`` for commands to appear in users' clients.
 
 **Arguments:**
-    - ``<cog_name>`` - The cog to enable commands from. This argument is case sensitive.
+    - ``<cog_names>`` - The cogs to enable commands from. This argument is case sensitive.
 
 .. _core-command-slash-list:
 
