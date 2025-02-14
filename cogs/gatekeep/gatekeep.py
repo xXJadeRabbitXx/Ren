@@ -60,11 +60,19 @@ class Gatekeep(commands.Cog):
     def cog_unload(self):
         self.__unload()
 
-    @commands.group(name="gatekeep")
+    @commands.group(name="gatekeep", aliases=["gk"])
     @commands.guild_only()
     @checks.mod_or_permissions(administrator=True)
     async def _gatekeep(self, ctx: Context):
         """Automatically gatekeep accounts that post spam messages."""
+
+    @_gatekeep.group(name="word", aliases=["w"])
+    async def word(self, ctx):
+        """Commands relating to words to gatekeep."""
+
+    @_gatekeep.group(name="user", aliases=["u"])
+    async def user(self, ctx):
+        """Commands relating to users and the watch list."""
 
     @_gatekeep.command(name="channel", aliases=["ch"])
     @commands.guild_only()
@@ -151,7 +159,196 @@ class Gatekeep(commands.Cog):
         else:
             await ctx.send("The value for the days should be greater than 0!")
 
-    @_gatekeep.command(name="initialize", aliases=["init"])
+    @_gatekeep.command(name="activate", aliases=["enable", "on"])
+    @commands.guild_only()
+    @checks.mod_or_permissions(administrator=True)
+    async def activate(self, ctx: Context):
+        """Activate the gatekeeping cog."""
+
+        await self.config.guild(ctx.guild).get_attr(KEY_ACTIVE).set(True)
+        await ctx.send(":warning: Gatekeeping is now active.")
+
+    @_gatekeep.command(name="deactivate", aliases=["disable", "off"])
+    @commands.guild_only()
+    @checks.mod_or_permissions(administrator=True)
+    async def deactivate(self, ctx: Context):
+        """Deactivate the gatekeeping cog."""
+
+        await self.config.guild(ctx.guild).get_attr(KEY_ACTIVE).set(False)
+        await ctx.send(":zzz: Gatekeeping is now inactive.")
+
+    @_gatekeep.command(name="status", aliases=["info", "?"])
+    @commands.guild_only()
+    @checks.mod_or_permissions(administrator=True)
+    async def status(self, ctx: Context):
+        """Show current status of the gatekeeping cog."""
+
+        log = await self.config.guild(ctx.guild).get_attr(KEY_LOG_CHANNEL)()
+        active = await self.config.guild(ctx.guild).get_attr(KEY_ACTIVE)()
+        threshold = await self.config.guild(ctx.guild).get_attr(KEY_THRESHOLD)()
+        nDays = await self.config.guild(ctx.guild).get_attr(KEY_NEW_USER_DAYS)()
+        await ctx.send(
+            ":information_source: Current Status :information_source:\n"
+            f"- Log Channel: <#{log}>\n- Gatekeeping: {active}\n"
+            f"- Threshold: {threshold}\n- Days to watch: {nDays}"
+        )
+
+    @_gatekeep.command(name="test", aliases=["eval", "score"])
+    @commands.guild_only()
+    @checks.mod_or_permissions(administrator=True)
+    async def testMsg(self, ctx: Context, *, msg: str):
+        """Evaluate the score for a given message
+
+        Parameters:
+        -----------
+        msg: str
+            The message to evaluate the score, given that the word weights are defined.
+        """
+        wordDict = await self.config.guild(ctx.guild).get_attr(KEY_WORD_DICT)()
+        # Break down into words
+        words = msg.strip().split(" ")
+        th = await self.config.guild(ctx.guild).get_attr(KEY_THRESHOLD)()
+        score = 0
+        # Begin scoring
+        for word in words:
+            # Remove any punctuation leftover in each word and lowercase all letters
+            w = word.translate(str.maketrans("", "", string.punctuation)).lower()
+
+            # If word is found, add to the message score
+            if w in wordDict:
+                score += wordDict[w]
+
+        if score >= th:
+            judge = "this message would warrant a ban."
+        else:
+            judge = "this message would not warrant a ban."
+
+        await ctx.send(f"This message scored {score} points. With a threshold of {th}, {judge}")
+
+    @word.command(name="add")
+    @commands.guild_only()
+    @checks.mod_or_permissions(administrator=True)
+    async def addWord(self, ctx: Context, word: str, weight: int):
+        """Add a word to the gatekeeping list.
+        If the word already exists on the list,
+        then update the word weight to the new weight.
+
+        Parameters:
+        -----------
+        word: str
+            The word to be added to the gatekeep list. This will automatically be
+            converted to lowercase and have all punctuation removed. If the word
+            already exists in the gatekeep list, then it will update the weight.
+
+        weight: int
+            The weight that the word has in the gatekeep list. Higher weights mean
+            the word is more likely to flag the entire message as spam.
+        """
+
+        # Sanitize word by removing all punctuation
+        w = word.translate(str.maketrans("", "", string.punctuation)).lower()
+
+        # Ensure both the word is valid and the weight is greater than 0
+        if len(w.split()) == 1 and weight > 0:
+            async with self.config.guild(ctx.guild).get_attr(KEY_WORD_DICT)() as wordDict:
+                update = False
+                prev = 0
+                if w in wordDict:
+                    update = True
+                    prev = wordDict[w]
+
+                wordDict[w] = weight
+
+                if update:
+                    await ctx.send(f"Updated the weight of `{w}` from **{prev}** to **{weight}**.")
+                else:
+                    await ctx.send(f"Added the word `{w}` with a weight of **{weight}**.")
+
+                self.logger.info(
+                    "%s#%s (%s) added/updated %s with weight %s.",
+                    ctx.author.name,
+                    ctx.author.discriminator,
+                    ctx.author.id,
+                    w,
+                    str(weight),
+                )
+
+        else:
+            # Invalid string or the integer passed was not a positive value
+            await ctx.send(
+                "The word is invalid and/or the value for the weight should be greater than 0!"
+            )
+
+    @word.command(name="remove", aliases=["delete", "del", "rm"])
+    @commands.guild_only()
+    @checks.mod_or_permissions(administrator=True)
+    async def removeWord(self, ctx: Context, word: str):
+        """Remove a word from the gatekeeping list, if it exists.
+
+        Parameters:
+        -----------
+        word: str
+            The word to be removed to the gatekeep list. This will automatically be
+            converted to lowercase and have all punctuation removed.
+        """
+
+        # Sanitize word by removing all punctuation
+        w = word.translate(str.maketrans("", "", string.punctuation)).lower()
+
+        # Ensure the word is valid
+        if len(w.split()) == 1:
+            async with self.config.guild(ctx.guild).get_attr(KEY_WORD_DICT)() as wordDict:
+                # Pop removes the item with key 'w' from the dictionary if it exists. Othewise it returns None
+                if wordDict.pop(w, None):
+                    await ctx.send(f"Removed `{w}` from the list.")
+                    self.logger.info(
+                        "%s#%s (%s) removed %s.",
+                        ctx.author.name,
+                        ctx.author.discriminator,
+                        ctx.author.id,
+                        w,
+                    )
+                else:
+                    await ctx.send(f"`{w}` is not in the list.")
+
+        else:
+            # Invalid string passed
+            await ctx.send("The word should be a non-empty string!")
+
+    @word.command(name="list", aliases=["ls", "words"])
+    @commands.guild_only()
+    @checks.mod_or_permissions(administrator=True)
+    async def listWords(self, ctx: Context):
+        """Lists the words on the word list for the server."""
+
+        display = []  # List of text for paginator to use.  Will be constructed from KEY_WORD_DICT.
+
+        # Loop through the word dictionary object
+        wordDict = await self.config.guild(ctx.guild).get_attr(KEY_WORD_DICT)()
+        for word, weight in wordDict.items():
+            # Construct the display list
+            text = f"{word}: {weight}"
+            display.append(text)
+
+        # Check if the display list is empty
+        if not display:
+            await ctx.send("The word list is empty.")
+            return
+
+        pageList = []
+        msg = "\n".join(display)
+        pages = list(pagify(msg, page_length=200))
+        totalPages = len(pages)
+        async for pageNumber, page in AsyncIter(pages).enumerate(start=1):
+            embed = discord.Embed(
+                title=f"List of words to gatekeep in **{ctx.guild.name}**", description=page
+            )
+            embed.set_footer(text=f"Page {pageNumber}/{totalPages}")
+            embed.colour = discord.Colour.red()
+            pageList.append(embed)
+        await menu(ctx, pageList, DEFAULT_CONTROLS)
+
+    @user.command(name="initialize", aliases=["init"])
     @commands.guild_only()
     @checks.mod_or_permissions(administrator=True)
     async def initWatchList(self, ctx: Context):
@@ -198,164 +395,63 @@ class Gatekeep(commands.Cog):
         end = time.time() - start
         await ctx.send(f"Operation took {end:.3f} seconds.")
 
-    @_gatekeep.command(name="activate", aliases=["enable", "on"])
+    @user.command(name="add")
     @commands.guild_only()
     @checks.mod_or_permissions(administrator=True)
-    async def activate(self, ctx: Context):
-        """Activate the gatekeeping cog."""
-
-        await self.config.guild(ctx.guild).get_attr(KEY_ACTIVE).set(True)
-        await ctx.send(":warning: Gatekeeping is now active.")
-
-    @_gatekeep.command(name="deactivate", aliases=["disable", "off"])
-    @commands.guild_only()
-    @checks.mod_or_permissions(administrator=True)
-    async def deactivate(self, ctx: Context):
-        """Deactivate the gatekeeping cog."""
-
-        await self.config.guild(ctx.guild).get_attr(KEY_ACTIVE).set(False)
-        await ctx.send(":zzz: Gatekeeping is now inactive.")
-
-    @_gatekeep.command(name="status", aliases=["info", "?"])
-    @commands.guild_only()
-    @checks.mod_or_permissions(administrator=True)
-    async def status(self, ctx: Context):
-        """Show current status of the gatekeeping cog."""
-
-        log = await self.config.guild(ctx.guild).get_attr(KEY_LOG_CHANNEL)()
-        active = await self.config.guild(ctx.guild).get_attr(KEY_ACTIVE)()
-        threshold = await self.config.guild(ctx.guild).get_attr(KEY_THRESHOLD)()
-        nDays = await self.config.guild(ctx.guild).get_attr(KEY_NEW_USER_DAYS)()
-        await ctx.send(
-            ":information_source: Current Status :information_source:\n"
-            f"- Log Channel: <#{log}>\n- Gatekeeping: {active}\n"
-            f"- Threshold: {threshold}\n- Days to watch: {nDays}"
-        )
-
-    @_gatekeep.command(name="add")
-    @commands.guild_only()
-    @checks.mod_or_permissions(administrator=True)
-    async def addWord(self, ctx: Context, word: str, weight: int):
-        """Add a word to the gatekeeping list.
-        If the word already exists on the list,
-        then update the word weight to the new weight.
+    async def addUser(self, ctx: Context, user: discord.User):
+        """Add a user to the watch list.
 
         Parameters:
         -----------
-        word: str
-            The word to be added to the gatekeep list. This will automatically be
-            converted to lowercase and have all punctuation removed. If the word
-            already exists in the gatekeep list, then it will update the weight.
-
-        weight: int
-            The weight that the word has in the gatekeep list. Higher weights mean
-            the word is more likely to flag the entire message as spam.
+        user: User
+            The user to be added to the watch list. This can be their username or ID.
         """
 
-        # Sanitize word by removing all punctuation
-        w = word.translate(str.maketrans("", "", string.punctuation)).lower()
-
-        # Ensure both the word is non-empty and the weight is greater than 0
-        if w and weight > 0:
-            async with self.config.guild(ctx.guild).get_attr(KEY_WORD_DICT)() as wordDict:
-                update = False
-                prev = 0
-                if w in wordDict:
-                    update = True
-                    prev = wordDict[w]
-
-                wordDict[w] = weight
-
-                if update:
-                    await ctx.send(f"Updated the weight of `{w}` from **{prev}** to **{weight}**.")
-                else:
-                    await ctx.send(f"Added the word `{w}` with a weight of **{weight}**.")
+        async with self.config.guild(ctx.guild).get_attr(KEY_WATCH_LIST)() as watchList:
+            if user.id not in watchList:
+                watchList.append(int(user.id))
+                await ctx.send(f"Added user ID `{user.id}` to the watch list.")
 
                 self.logger.info(
-                    "%s#%s (%s) added/updated %s with weight %s.",
+                    "%s#%s (%s) added user ID %s to the watch list for %s.",
                     ctx.author.name,
                     ctx.author.discriminator,
                     ctx.author.id,
-                    w,
-                    str(weight),
+                    user.id,
+                    ctx.guild.name,
                 )
+            else:
+                await ctx.send(f"User ID `{user.id}` is already in the watch list.")
 
-        else:
-            # Empty string "" passed or the integer passed was not a positive value
-            await ctx.send(
-                "The word should be non-empty and/or the value for the weight should be greater than 0!"
-            )
-
-    @_gatekeep.command(name="remove", aliases=["delete", "del"])
+    @user.command(name="remove", aliases=["delete", "del", "rm"])
     @commands.guild_only()
     @checks.mod_or_permissions(administrator=True)
-    async def removeWord(self, ctx: Context, word: str):
-        """Remove a word from the gatekeeping list, if it exists.
+    async def removeUser(self, ctx: Context, user: discord.User):
+        """Remove a user from the watch list.
 
         Parameters:
         -----------
-        word: str
-            The word to be removed to the gatekeep list. This will automatically be
-            converted to lowercase and have all punctuation removed.
+        user: User
+            The user to be removed from the watch list. This can be their username or ID.
         """
 
-        # Sanitize word by removing all punctuation
-        w = word.translate(str.maketrans("", "", string.punctuation)).lower()
+        async with self.config.guild(ctx.guild).get_attr(KEY_WATCH_LIST)() as watchList:
+            if user.id in watchList:
+                watchList.remove(user.id)
+                await ctx.send(f"Removed user ID `{user.id}` to the watch list.")
 
-        # Ensure the word is non-empty
-        if w:
-            async with self.config.guild(ctx.guild).get_attr(KEY_WORD_DICT)() as wordDict:
-                # Pop removes the item with key 'w' from the dictionary if it exists. Othewise it returns None
-                if wordDict.pop(w, None):
-                    await ctx.send(f"Removed `{w}` from the list.")
-                    self.logger.info(
-                        "%s#%s (%s) removed %s.",
-                        ctx.author.name,
-                        ctx.author.discriminator,
-                        ctx.author.id,
-                        w,
-                    )
-                else:
-                    await ctx.send(f"`{w}` is not in the list.")
+                self.logger.info(
+                    "%s#%s (%s) removed user ID %s from the watch list for %s.",
+                    ctx.author.name,
+                    ctx.author.discriminator,
+                    ctx.author.id,
+                    user.id,
+                    ctx.guild.name,
+                )
+            else:
+                await ctx.send(f"User ID `{user.id}` is not in the watch list.")
 
-        else:
-            # Empty string "" passed
-            await ctx.send("The word should be a non-empty string!")
-
-    @_gatekeep.command(name="list", aliases=["ls", "words"])
-    @commands.guild_only()
-    @checks.mod_or_permissions(administrator=True)
-    async def listWords(self, ctx: Context):
-        """Lists the words on the word list for the server."""
-
-        display = []  # List of text for paginator to use.  Will be constructed from KEY_WORD_DICT.
-
-        # Loop through the word dictionary object
-        wordDict = await self.config.guild(ctx.guild).get_attr(KEY_WORD_DICT)()
-        for word, weight in wordDict.items():
-            # Construct the display list
-            text = f"{word}: {weight}"
-            display.append(text)
-
-        # Check if the display list is empty
-        if not display:
-            await ctx.send("The word list is empty.")
-            return
-
-        pageList = []
-        msg = "\n".join(display)
-        pages = list(pagify(msg, page_length=300))
-        totalPages = len(pages)
-        async for pageNumber, page in AsyncIter(pages).enumerate(start=1):
-            embed = discord.Embed(
-                title=f"List of words to gatekeep in **{ctx.guild.name}**", description=page
-            )
-            embed.set_footer(text=f"Page {pageNumber}/{totalPages}")
-            embed.colour = discord.Colour.red()
-            pageList.append(embed)
-        await menu(ctx, pageList, DEFAULT_CONTROLS)
-
-    @_gatekeep.command(name="watchlist", aliases=["wl", "users"])
+    @user.command(name="list", aliases=["ls", "users"])
     @commands.guild_only()
     @checks.mod_or_permissions(administrator=True)
     async def listWatch(self, ctx: Context):
@@ -372,6 +468,9 @@ class Gatekeep(commands.Cog):
             member = discord.utils.get(ctx.guild.members, id=int(id))
             if member:
                 text = f"{member.name}#{member.discriminator} ({member.id})"
+                display.append(text)
+            else:
+                text = f"Unknown User ({id})"
                 display.append(text)
 
         # Check if the display list is empty
@@ -408,48 +507,47 @@ class Gatekeep(commands.Cog):
         guilds = self.bot.guilds
         current = datetime.now(timezone.utc)
         for guild in guilds:
-            watchList = await self.config.guild(guild).get_attr(KEY_WATCH_LIST)()
-            nDays = await self.config.guild(guild).get_attr(KEY_NEW_USER_DAYS)()
-            for id in watchList:
-                member = discord.utils.get(guild.members, id=id)
-                if member:
-                    # Remove member from watch list if they have been in the server for over the required amount of days
-                    if (
-                        current - member.joined_at > timedelta(days=nDays)
-                        or member.guild_permissions.administrator
-                        or await self.bot.is_automod_immune(member)
-                    ):
+            watchListIterator = await self.config.guild(guild).get_attr(KEY_WATCH_LIST)()
+            async with self.config.guild(guild).get_attr(KEY_WATCH_LIST)() as watchList:
+                nDays = await self.config.guild(guild).get_attr(KEY_NEW_USER_DAYS)()
+                for id in watchListIterator:
+                    member = discord.utils.get(guild.members, id=id)
+                    if member:
+                        # Remove member from watch list if they have been in the server for over the required amount of days
+                        if (
+                            current - member.joined_at > timedelta(days=nDays)
+                            or member.guild_permissions.administrator
+                            or await self.bot.is_automod_immune(member)
+                        ):
+                            watchList.remove(int(id))
+                            self.logger.info(
+                                "%s#%s (%s) removed from the watch list. (Trusted user)",
+                                member.name,
+                                member.discriminator,
+                                member.id,
+                            )
+                    else:
+                        # Remove member if they are no longer in the server (can't log because of it being an id)
                         watchList.remove(int(id))
                         self.logger.info(
-                            "%s#%s (%s) removed from the watch list. (Trusted user)",
-                            member.name,
-                            member.discriminator,
-                            member.id,
+                            "Member with id (%s) removed from the watch list. (Not in server)", id
                         )
-                else:
-                    # Remove member if they are no longer in the server (can't log because of it being an id)
-                    watchList.remove(int(id))
-                    self.logger.info(
-                        "Member with id (%s) removed from the watch list. (Not in server)", id
-                    )
 
-            await self.config.guild(guild).get_attr(KEY_WATCH_LIST).set(watchList)
-            self.logger.info("Refreshed the watch list for %s", guild.name)
+                self.logger.info("Refreshed the watch list for %s", guild.name)
 
     # The async function that is triggered on new member join.
     @commands.Cog.listener()
     async def on_member_join(self, newMember: discord.Member):
         # Add member to list, if they joined and aren't already on the list
-        watchList = await self.config.guild(newMember.guild).get_attr(KEY_WATCH_LIST)()
-        if int(newMember.id) not in watchList:
-            watchList.append(int(newMember.id))
-            self.logger.info(
-                "%s#%s (%s) added to the watch list.",
-                newMember.name,
-                newMember.discriminator,
-                newMember.id,
-            )
-            await self.config.guild(newMember.guild).get_attr(KEY_WATCH_LIST).set(watchList)
+        async with self.config.guild(newMember.guild).get_attr(KEY_WATCH_LIST)() as watchList:
+            if int(newMember.id) not in watchList:
+                watchList.append(int(newMember.id))
+                self.logger.info(
+                    "%s#%s (%s) added to the watch list.",
+                    newMember.name,
+                    newMember.discriminator,
+                    newMember.id,
+                )
 
     # The async function that is triggered on any message being sent.
     @commands.Cog.listener()
@@ -479,13 +577,13 @@ class Gatekeep(commands.Cog):
             return
 
         # Check the list
-        watchList = await self.config.guild(message.guild).get_attr(KEY_WATCH_LIST)()
-        # Do nothing if the message author is not on the watch list to begin with
-        if int(author.id) not in watchList:
-            return
+        async with self.config.guild(message.guild).get_attr(KEY_WATCH_LIST)() as watchList:
+            # Do nothing if the message author is not on the watch list to begin with
+            if int(author.id) not in watchList:
+                return
 
-        # Evaluation of the message contents happen here
-        async with self.config.guild(message.guild).get_attr(KEY_WORD_DICT)() as wordDict:
+            # Evaluation of the message contents happen here
+            wordDict = await self.config.guild(message.guild).get_attr(KEY_WORD_DICT)()
             # Break down into words
             words = message.content.strip().split(" ")
             th = await self.config.guild(message.guild).get_attr(KEY_THRESHOLD)()
@@ -531,4 +629,9 @@ class Gatekeep(commands.Cog):
 
             # Remove the author from the watch list. Ban = gone from server, no ban = they're probably not a bot
             watchList.remove(int(author.id))
-            await self.config.guild(author.guild).get_attr(KEY_WATCH_LIST).set(watchList)
+            self.logger.info(
+                "%s#%s (%s) removed from the watch list.",
+                author.name,
+                author.discriminator,
+                author.id,
+            )
