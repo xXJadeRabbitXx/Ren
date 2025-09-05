@@ -66,6 +66,10 @@ class Gatekeep(commands.Cog):
     async def _gatekeep(self, ctx: Context):
         """Automatically gatekeep accounts that post spam messages."""
 
+    @_gatekeep.group(name="settings", aliases=["s", "set"])
+    async def settings(self, ctx):
+        """Commands relating to setting gatekeeping configurations."""
+
     @_gatekeep.group(name="word", aliases=["w"])
     async def word(self, ctx):
         """Commands relating to words to gatekeep."""
@@ -74,7 +78,7 @@ class Gatekeep(commands.Cog):
     async def user(self, ctx):
         """Commands relating to users and the watch list."""
 
-    @_gatekeep.command(name="channel", aliases=["ch"])
+    @settings.command(name="channel", aliases=["ch"])
     @commands.guild_only()
     @checks.mod_or_permissions(administrator=True)
     async def setChannel(self, ctx: Context, channel: discord.TextChannel = None):
@@ -89,7 +93,7 @@ class Gatekeep(commands.Cog):
         if channel:
             await self.config.guild(ctx.guild).get_attr(KEY_LOG_CHANNEL).set(channel.id)
             self.logger.info(
-                "%s#%s (%s) set the gatekeep logging channel to %s",
+                "%s#%s (%s) set the gatekeep logging channel to %s.",
                 ctx.author.name,
                 ctx.author.discriminator,
                 ctx.author.id,
@@ -105,7 +109,7 @@ class Gatekeep(commands.Cog):
                 ":white_check_mark: **Gatekeep - Channel**: Moderation logs are now disabled."
             )
 
-    @_gatekeep.command(name="threshold", aliases=["th"])
+    @settings.command(name="threshold", aliases=["th"])
     @commands.guild_only()
     @checks.mod_or_permissions(administrator=True)
     async def setThreshold(self, ctx: Context, threshold: int):
@@ -120,19 +124,48 @@ class Gatekeep(commands.Cog):
         if threshold > 0:
             await self.config.guild(ctx.guild).get_attr(KEY_THRESHOLD).set(threshold)
             self.logger.info(
-                "%s#%s (%s) set the threshold to %s",
+                "%s#%s (%s) set the threshold to %d.",
                 ctx.author.name,
                 ctx.author.discriminator,
                 ctx.author.id,
-                str(threshold),
+                threshold,
             )
             await ctx.send(
-                f":white_check_mark: **Gatekeep - Threshold**: The threshold has been updated to **{threshold}**"
+                f":white_check_mark: **Gatekeep - Threshold**: The threshold has been updated to **{threshold}**."
             )
         else:
             await ctx.send("The value for the threshold should be greater than 0!")
 
-    @_gatekeep.command(name="days")
+    @settings.command(name="attachmentweight", aliases=["aw", "attachment", "attachments"])
+    @commands.guild_only()
+    @checks.mod_or_permissions(administrator=True)
+    async def setAttachmentWeight(self, ctx: Context, weight: int):
+        """Set the weight for how attachments in a message are scored.
+        Each attachment in a message will add this weight to the score when evaluating.
+
+        Parameters:
+        -----------
+        weight: int
+            Weight for which every attachment in a message will be scored.
+        """
+
+        if weight >= 0:
+            await self.config.guild(ctx.guild).get_attr(KEY_ATTACHMENT_WEIGHT).set(weight)
+            self.logger.info(
+                "%s#%s (%s) set the attachment weight to %d.",
+                ctx.author.name,
+                ctx.author.discriminator,
+                ctx.author.id,
+                weight,
+            )
+            await ctx.send(
+                f":white_check_mark: **Gatekeep - Attachment Weight**: "
+                f"The attachment weight has been updated to **{weight}**."
+            )
+        else:
+            await ctx.send("The value for the threshold should be greater than or equal to 0!")
+
+    @settings.command(name="days")
     @commands.guild_only()
     @checks.mod_or_permissions(administrator=True)
     async def setDays(self, ctx: Context, days: int):
@@ -147,14 +180,14 @@ class Gatekeep(commands.Cog):
         if days > 0:
             await self.config.guild(ctx.guild).get_attr(KEY_NEW_USER_DAYS).set(days)
             self.logger.info(
-                "%s#%s (%s) set the number of days to %s",
+                "%s#%s (%s) set the number of days to %d.",
                 ctx.author.name,
                 ctx.author.discriminator,
                 ctx.author.id,
-                str(days),
+                days,
             )
             await ctx.send(
-                f":white_check_mark: **Gatekeep - Days**: The number of days has been updated to **{days}**"
+                f":white_check_mark: **Gatekeep - Days**: The number of days has been updated to **{days}**."
             )
         else:
             await ctx.send("The value for the days should be greater than 0!")
@@ -186,13 +219,14 @@ class Gatekeep(commands.Cog):
         log = await self.config.guild(ctx.guild).get_attr(KEY_LOG_CHANNEL)()
         active = await self.config.guild(ctx.guild).get_attr(KEY_ACTIVE)()
         threshold = await self.config.guild(ctx.guild).get_attr(KEY_THRESHOLD)()
+        attachmentWeight = await self.config.guild(ctx.guild).get_attr(KEY_ATTACHMENT_WEIGHT)()
         nDays = await self.config.guild(ctx.guild).get_attr(KEY_NEW_USER_DAYS)()
         banCount = await self.config.guild(ctx.guild).get_attr(KEY_BAN_COUNT)()
         await ctx.send(
             ":information_source: Current Status :information_source:\n"
             f"- Log Channel: <#{log}>\n- Gatekeeping: {active}\n"
-            f"- Threshold: {threshold}\n- Days to watch: {nDays}\n"
-            f"- Total Users Banned: {banCount}"
+            f"- Threshold: {threshold}\n- Attachment Weight: {attachmentWeight}\n"
+            f"- Days to Watch: {nDays}\n- Total Users Banned: {banCount}"
         )
 
     @_gatekeep.command(name="test", aliases=["eval", "score"])
@@ -210,6 +244,7 @@ class Gatekeep(commands.Cog):
         # Break down into words
         words = msg.strip().split(" ")
         th = await self.config.guild(ctx.guild).get_attr(KEY_THRESHOLD)()
+        attachmentWeight = await self.config.guild(ctx.guild).get_attr(KEY_ATTACHMENT_WEIGHT)()
         score = 0
         # Begin scoring
         for word in words:
@@ -219,6 +254,10 @@ class Gatekeep(commands.Cog):
             # If word is found, add to the message score
             if w in wordDict:
                 score += wordDict[w]
+
+        # Add the weight for each attachment in the message, if any.
+        nAttachments = len(ctx.message.attachments)
+        score += nAttachments * attachmentWeight
 
         if score >= th:
             judge = "this message would warrant a ban."
@@ -232,7 +271,7 @@ class Gatekeep(commands.Cog):
     @checks.mod_or_permissions(administrator=True)
     async def addWord(self, ctx: Context, word: str, weight: int):
         """Add a word to the gatekeeping list.
-        If the word already exists on the list,
+        If the word already exists in the list,
         then update the word weight to the new weight.
 
         Parameters:
@@ -267,12 +306,12 @@ class Gatekeep(commands.Cog):
                     await ctx.send(f"Added the word `{w}` with a weight of **{weight}**.")
 
                 self.logger.info(
-                    "%s#%s (%s) added/updated %s with weight %s.",
+                    "%s#%s (%s) added/updated %s with weight %d.",
                     ctx.author.name,
                     ctx.author.discriminator,
                     ctx.author.id,
                     w,
-                    str(weight),
+                    weight,
                 )
 
         else:
@@ -321,7 +360,7 @@ class Gatekeep(commands.Cog):
     @commands.guild_only()
     @checks.mod_or_permissions(administrator=True)
     async def listWords(self, ctx: Context):
-        """Lists the words on the word list for the server."""
+        """Lists the words in the word list for the server."""
 
         display = []  # List of text for paginator to use.  Will be constructed from KEY_WORD_DICT.
 
@@ -583,9 +622,9 @@ class Gatekeep(commands.Cog):
 
     async def watchlistLoop(self):
         """Daily update loop to keep the watchlist small."""
-        self.logger.info("Waiting for bot to be ready")
+        self.logger.info("Waiting for bot to be ready...")
         await self.bot.wait_until_red_ready()
-        self.logger.info("Bot is ready")
+        self.logger.info("Bot is ready.")
         while self == self.bot.get_cog("Gatekeep"):
             if self.lastChecked.day != datetime.now().day:
                 self.lastChecked = datetime.now()
@@ -623,7 +662,7 @@ class Gatekeep(commands.Cog):
                             "Member with id (%s) removed from the watch list. (Not in server)", id
                         )
 
-                self.logger.info("Refreshed the watch list for %s", guild.name)
+                self.logger.info("Refreshed the watch list for %s.", guild.name)
 
     # The async function that is triggered on new member join.
     @commands.Cog.listener()
@@ -677,6 +716,9 @@ class Gatekeep(commands.Cog):
             # Break down into words
             words = message.content.strip().split(" ")
             th = await self.config.guild(message.guild).get_attr(KEY_THRESHOLD)()
+            attachmentWeight = await self.config.guild(message.guild).get_attr(
+                KEY_ATTACHMENT_WEIGHT
+            )()
 
             score = 0
             # Begin scoring
@@ -687,6 +729,10 @@ class Gatekeep(commands.Cog):
                 # If word is found, add to the message score
                 if w in wordDict:
                     score += wordDict[w]
+
+            # Add the weight for each attachment in the message, if any.
+            nAttachments = len(message.attachments)
+            score += nAttachments * attachmentWeight
 
             # Determine if spam
             if score >= th:
@@ -705,16 +751,17 @@ class Gatekeep(commands.Cog):
                 await self.bot.get_channel(ch).send(
                     f"Banned {author.mention} `{author.id}` for posting spam. The message score was {score}, "
                     f"which exceeded the threshold of {th}. Their message was:```\n{escape(m, formatting=True)}\n```"
+                    f"This message contained {nAttachments} attachment(s).\n"
                 )
 
                 self.logger.info(
-                    "%s#%s (%s) was banned from %s for spam. Message score was %s, which exceed threshold of %s.",
+                    "%s#%s (%s) was banned from %s for spam. Message score was %d, which exceed threshold of %d.",
                     author.name,
                     author.discriminator,
                     author.id,
                     message.guild.name,
-                    str(score),
-                    str(th),
+                    score,
+                    th,
                 )
 
                 banCount = await self.config.guild(message.guild).get_attr(KEY_BAN_COUNT)()
